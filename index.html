@@ -3,498 +3,133 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Inventory Management System</title>
+    <title>Inventory Management</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <style>
-        body {
-            padding: 20px;
-            font-family: Arial, sans-serif;
-        }
-        .inventory-table {
-            margin-top: 20px;
-        }
-        .search-container {
-            margin-bottom: 20px;
-        }
-        .edit-modal {
-            max-height: 80vh;
-            overflow-y: auto;
-        }
-        .similar-products {
-            margin-top: 10px;
-            padding: 10px;
-            background-color: #f8f9fa;
-            border-radius: 5px;
-        }
-    </style>
+    <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <div class="container">
-        <h1 class="text-center mb-4">Inventory Management System</h1>
+    <div class="container mt-4">
+        <h1 class="text-center mb-4">Inventory Management</h1>
         
-        <div class="card search-container">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5>Store Selection</h5>
+            </div>
             <div class="card-body">
                 <div class="row">
                     <div class="col-md-6">
-                        <div class="mb-3">
-                            <label for="storeSelect" class="form-label">Select Store:</label>
-                            <select id="storeSelect" class="form-select">
-                                <option value="">Loading stores...</option>
-                            </select>
-                        </div>
+                        <select id="storeSelect" class="form-select">
+                            <option value="">Select a store</option>
+                        </select>
                     </div>
                     <div class="col-md-6">
-                        <div class="mb-3">
-                            <label for="searchInput" class="form-label">Search Product:</label>
-                            <input type="text" class="form-control" id="searchInput" placeholder="Enter product name">
-                        </div>
+                        <button id="fetchBtn" class="btn btn-primary">Fetch Inventory</button>
                     </div>
                 </div>
-                <button id="loadInventoryBtn" class="btn btn-primary">Load Inventory</button>
-                <button id="clearSearchBtn" class="btn btn-secondary ms-2">Clear Search</button>
             </div>
         </div>
 
-        <div id="similarProductsAlert" class="alert alert-info d-none">
-            <strong>Did you mean?</strong> 
-            <div id="similarProductsList" class="similar-products"></div>
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5>Search & Filter</h5>
+            </div>
+            <div class="card-body">
+                <div class="row mb-3">
+                    <div class="col-md-8">
+                        <input type="text" id="searchInput" class="form-control" placeholder="Search by product name...">
+                    </div>
+                    <div class="col-md-4">
+                        <button id="searchBtn" class="btn btn-secondary">Search</button>
+                        <button id="clearSearchBtn" class="btn btn-outline-secondary">Clear</button>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-4">
+                        <label for="sizeFilter" class="form-label">Filter by Size</label>
+                        <select id="sizeFilter" class="form-select">
+                            <option value="">All Sizes</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label for="colorFilter" class="form-label">Filter by Color</label>
+                        <select id="colorFilter" class="form-select">
+                            <option value="">All Colors</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label for="sortSelect" class="form-label">Sort By</label>
+                        <select id="sortSelect" class="form-select">
+                            <option value="size-asc">Size (Ascending)</option>
+                            <option value="size-desc">Size (Descending)</option>
+                            <option value="name-asc">Name (A-Z)</option>
+                            <option value="name-desc">Name (Z-A)</option>
+                            <option value="price-asc">Price (Low-High)</option>
+                            <option value="price-desc">Price (High-Low)</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
         </div>
 
-        <div class="table-responsive inventory-table">
-            <table class="table table-striped table-hover">
-                <thead class="table-dark">
-                    <tr>
-                        <th>Product Name</th>
-                        <th>Brand</th>
-                        <th>Size</th>
-                        <th>Color</th>
-                        <th>Quantity</th>
-                        <th>Price</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody id="inventoryTableBody">
-                    <tr>
-                        <td colspan="7" class="text-center">No inventory data loaded yet</td>
-                    </tr>
-                </tbody>
-            </table>
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5>Inventory Items</h5>
+                <span id="itemCount" class="badge bg-primary">0 items</span>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover">
+                        <thead>
+                            <tr>
+                                <th>Product Name</th>
+                                <th>Brand</th>
+                                <th>Color</th>
+                                <th>Size</th>
+                                <th>Price</th>
+                                <th>Quantity</th>
+                                <th>Store</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="inventoryTable">
+                            <!-- Items will be loaded here -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </div>
     </div>
 
-    <!-- Edit Modal -->
-    <div class="modal fade" id="editModal" tabindex="-1" aria-hidden="true">
+    <!-- Edit Item Modal -->
+    <div class="modal fade" id="editItemModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-lg">
-            <div class="modal-content edit-modal">
+            <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title">Edit Product</h5>
+                    <h5 class="modal-title">Edit Inventory Item</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
-                <div class="modal-body">
-                    <form id="editForm">
-                        <input type="hidden" id="editDocId">
-                        <div class="row mb-3">
-                            <div class="col-md-6">
-                                <label for="editProductName" class="form-label">Product Name</label>
-                                <input type="text" class="form-control" id="editProductName" required>
-                            </div>
-                            <div class="col-md-6">
-                                <label for="editBrand" class="form-label">Brand</label>
-                                <input type="text" class="form-control" id="editBrand">
-                            </div>
-                        </div>
-                        <div class="row mb-3">
-                            <div class="col-md-4">
-                                <label for="editSize" class="form-label">Size</label>
-                                <input type="text" class="form-control" id="editSize">
-                            </div>
-                            <div class="col-md-4">
-                                <label for="editColor" class="form-label">Color</label>
-                                <input type="text" class="form-control" id="editColor">
-                            </div>
-                            <div class="col-md-4">
-                                <label for="editGender" class="form-label">Gender</label>
-                                <input type="text" class="form-control" id="editGender">
-                            </div>
-                        </div>
-                        <div class="row mb-3">
-                            <div class="col-md-4">
-                                <label for="editQuantity" class="form-label">Quantity</label>
-                                <input type="text" class="form-control" id="editQuantity">
-                            </div>
-                            <div class="col-md-4">
-                                <label for="editPrice" class="form-label">Price</label>
-                                <input type="text" class="form-control" id="editPrice">
-                            </div>
-                            <div class="col-md-4">
-                                <label for="editSerialNo" class="form-label">Serial No</label>
-                                <input type="text" class="form-control" id="editSerialNo">
-                            </div>
-                        </div>
-                        <div class="mb-3">
-                            <label for="editMaterial" class="form-label">Material</label>
-                            <input type="text" class="form-control" id="editMaterial">
-                        </div>
-                        <div class="mb-3">
-                            <label for="editStyle" class="form-label">Style</label>
-                            <input type="text" class="form-control" id="editStyle">
-                        </div>
-                        <div class="mb-3">
-                            <label for="editNotes" class="form-label">Notes</label>
-                            <textarea class="form-control" id="editNotes" rows="3"></textarea>
-                        </div>
-                    </form>
+                <div class="modal-body" id="editItemForm">
+                    <!-- Form will be loaded here -->
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                    <button type="button" class="btn btn-danger" id="deleteProductBtn">Delete</button>
-                    <button type="button" class="btn btn-primary" id="saveChangesBtn">Save changes</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" id="saveChangesBtn" class="btn btn-primary">Save Changes</button>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Firebase and other JS -->
+    <!-- Loading Spinner -->
+    <div id="loadingSpinner" class="spinner-overlay d-none">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.6.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.6.0/firebase-firestore-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.6.0/firebase-auth-compat.js"></script>
-    
-    <script>
-        // Firebase configuration
-        const firebaseConfig = {
-            apiKey: "AIzaSyD80v3mBIfPRfsjK-mt_gHr0-pYkvbXf7g",
-            authDomain: "footactionn.firebaseapp.com",
-            projectId: "footactionn",
-            storageBucket: "footactionn.appspot.com",
-            messagingSenderId: "89580639624",
-            appId: "1:89580639624:web:83473e8b9409f079f5563d",
-            measurementId: "G-P807DCTHZR"
-        };
-
-        // Initialize Firebase
-        const app = firebase.initializeApp(firebaseConfig);
-        const db = firebase.firestore();
-        const auth = firebase.auth();
-
-        // Global variables
-        let currentInventory = [];
-        let currentStoreId = '';
-        let currentUserId = '';
-
-        // DOM elements
-        const storeSelect = document.getElementById('storeSelect');
-        const searchInput = document.getElementById('searchInput');
-        const loadInventoryBtn = document.getElementById('loadInventoryBtn');
-        const clearSearchBtn = document.getElementById('clearSearchBtn');
-        const inventoryTableBody = document.getElementById('inventoryTableBody');
-        const editModal = new bootstrap.Modal(document.getElementById('editModal'));
-        const editForm = document.getElementById('editForm');
-        const saveChangesBtn = document.getElementById('saveChangesBtn');
-        const deleteProductBtn = document.getElementById('deleteProductBtn');
-        const similarProductsAlert = document.getElementById('similarProductsAlert');
-        const similarProductsList = document.getElementById('similarProductsList');
-
-        // Login function (you'll need to replace with your actual admin credentials)
-        async function loginToFirebase() {
-            const email = prompt("Enter admin email:");
-            const password = prompt("Enter admin password:");
-            
-            try {
-                const userCredential = await auth.signInWithEmailAndPassword(email, password);
-                currentUserId = userCredential.user.uid;
-                console.log("Logged in as:", userCredential.user.email);
-                loadStores();
-                return true;
-            } catch (error) {
-                console.error("Login error:", error);
-                alert("Login failed. Please check your credentials.");
-                return false;
-            }
-        }
-
-        // Load stores from Firestore
-        async function loadStores() {
-            try {
-                const storesRef = db.collection(`business/${currentUserId}/stores`);
-                const snapshot = await storesRef.get();
-                
-                storeSelect.innerHTML = '<option value="">Select a store</option>';
-                
-                snapshot.forEach(doc => {
-                    const storeData = doc.data();
-                    if (storeData.stores && Array.isArray(storeData.stores)) {
-                        storeData.stores.forEach(store => {
-                            const option = document.createElement('option');
-                            option.value = store.id;
-                            option.textContent = `${store.name} (${store.location})`;
-                            storeSelect.appendChild(option);
-                        });
-                    }
-                });
-            } catch (error) {
-                console.error("Error loading stores:", error);
-                alert("Failed to load stores. Please try again.");
-            }
-        }
-
-        // Load inventory for selected store
-        async function loadInventory() {
-            currentStoreId = storeSelect.value;
-            if (!currentStoreId) {
-                alert("Please select a store first");
-                return;
-            }
-            
-            try {
-                loadInventoryBtn.disabled = true;
-                loadInventoryBtn.textContent = "Loading...";
-                
-                const inventoryRef = db.collection(`users/${currentUserId}/inventory`)
-                    .where('storeId', '==', currentStoreId);
-                
-                const snapshot = await inventoryRef.get();
-                currentInventory = [];
-                
-                snapshot.forEach(doc => {
-                    currentInventory.push({
-                        id: doc.id,
-                        ...doc.data()
-                    });
-                });
-                
-                renderInventory(currentInventory);
-                alert(`Loaded ${currentInventory.length} items from inventory`);
-            } catch (error) {
-                console.error("Error loading inventory:", error);
-                alert("Failed to load inventory. Please try again.");
-            } finally {
-                loadInventoryBtn.disabled = false;
-                loadInventoryBtn.textContent = "Load Inventory";
-            }
-        }
-
-        // Render inventory to the table
-        function renderInventory(inventory) {
-            if (inventory.length === 0) {
-                inventoryTableBody.innerHTML = '<tr><td colspan="7" class="text-center">No inventory items found</td></tr>';
-                return;
-            }
-            
-            inventoryTableBody.innerHTML = '';
-            
-            inventory.forEach(item => {
-                const row = document.createElement('tr');
-                row.innerHTML = `
-                    <td>${item['Product Name'] || 'N/A'}</td>
-                    <td>${item.Brand || 'N/A'}</td>
-                    <td>${item.Size || 'N/A'}</td>
-                    <td>${item.Color || 'N/A'}</td>
-                    <td>${item.Quantity || '0'}</td>
-                    <td>${item.Price || 'N/A'}</td>
-                    <td>
-                        <button class="btn btn-sm btn-primary edit-btn" data-id="${item.id}">Edit</button>
-                    </td>
-                `;
-                inventoryTableBody.appendChild(row);
-            });
-            
-            // Add event listeners to edit buttons
-            document.querySelectorAll('.edit-btn').forEach(btn => {
-                btn.addEventListener('click', () => openEditModal(btn.dataset.id));
-            });
-        }
-
-        // Search inventory with fuzzy matching
-        function searchInventory() {
-            const searchTerm = searchInput.value.trim().toLowerCase();
-            if (!searchTerm) {
-                renderInventory(currentInventory);
-                similarProductsAlert.classList.add('d-none');
-                return;
-            }
-            
-            // Exact matches first
-            const exactMatches = currentInventory.filter(item => 
-                item['Product Name'] && item['Product Name'].toLowerCase().includes(searchTerm)
-            );
-            
-            // Fuzzy matches (simple implementation)
-            const fuzzyMatches = currentInventory.filter(item => {
-                if (!item['Product Name']) return false;
-                
-                const productName = item['Product Name'].toLowerCase();
-                if (productName.includes(searchTerm)) return false; // Skip exact matches
-                
-                // Simple fuzzy match - checks if all search characters appear in order in the product name
-                let searchIndex = 0;
-                for (let i = 0; i < productName.length; i++) {
-                    if (productName[i] === searchTerm[searchIndex]) {
-                        searchIndex++;
-                        if (searchIndex === searchTerm.length) return true;
-                    }
-                }
-                return false;
-            });
-            
-            const allMatches = [...exactMatches, ...fuzzyMatches];
-            
-            if (allMatches.length > 0) {
-                renderInventory(allMatches);
-                similarProductsAlert.classList.add('d-none');
-            } else {
-                // Show similar products if no matches found
-                showSimilarProducts(searchTerm);
-                inventoryTableBody.innerHTML = '<tr><td colspan="7" class="text-center">No matching items found</td></tr>';
-            }
-        }
-
-        // Show similar products when no exact matches are found
-        function showSimilarProducts(searchTerm) {
-            // Get all unique product names
-            const productNames = [...new Set(currentInventory.map(item => item['Product Name']))].filter(Boolean);
-            
-            // Simple similarity check (Levenshtein distance would be better here)
-            const similar = productNames.filter(name => {
-                const lowerName = name.toLowerCase();
-                return lowerName.includes(searchTerm.substring(0, 3)) || 
-                       lowerName.includes(searchTerm.substring(searchTerm.length - 3));
-            }).slice(0, 5); // Limit to 5 suggestions
-            
-            if (similar.length > 0) {
-                similarProductsList.innerHTML = similar.map(name => 
-                    `<button class="btn btn-sm btn-outline-primary me-2 mb-2 similar-product">${name}</button>`
-                ).join('');
-                
-                // Add click handlers to similar product buttons
-                document.querySelectorAll('.similar-product').forEach(btn => {
-                    btn.addEventListener('click', () => {
-                        searchInput.value = btn.textContent;
-                        searchInventory();
-                    });
-                });
-                
-                similarProductsAlert.classList.remove('d-none');
-            } else {
-                similarProductsAlert.classList.add('d-none');
-            }
-        }
-
-        // Open edit modal with product data
-        function openEditModal(docId) {
-            const product = currentInventory.find(item => item.id === docId);
-            if (!product) return;
-            
-            // Populate form fields
-            document.getElementById('editDocId').value = docId;
-            document.getElementById('editProductName').value = product['Product Name'] || '';
-            document.getElementById('editBrand').value = product.Brand || '';
-            document.getElementById('editSize').value = product.Size || '';
-            document.getElementById('editColor').value = product.Color || '';
-            document.getElementById('editGender').value = product.Gender || '';
-            document.getElementById('editQuantity').value = product.Quantity || '';
-            document.getElementById('editPrice').value = product.Price || '';
-            document.getElementById('editSerialNo').value = product.serialNo || '';
-            document.getElementById('editMaterial').value = product.Material || '';
-            document.getElementById('editStyle').value = product.Style || '';
-            document.getElementById('editNotes').value = product.notes || '';
-            
-            editModal.show();
-        }
-
-        // Save changes to Firestore
-        async function saveChanges() {
-            const docId = document.getElementById('editDocId').value;
-            const productRef = db.doc(`users/${currentUserId}/inventory/${docId}`);
-            
-            const updatedData = {
-                'Product Name': document.getElementById('editProductName').value,
-                Brand: document.getElementById('editBrand').value,
-                Size: document.getElementById('editSize').value,
-                Color: document.getElementById('editColor').value,
-                Gender: document.getElementById('editGender').value,
-                Quantity: document.getElementById('editQuantity').value,
-                Price: document.getElementById('editPrice').value,
-                serialNo: document.getElementById('editSerialNo').value,
-                Material: document.getElementById('editMaterial').value,
-                Style: document.getElementById('editStyle').value,
-                notes: document.getElementById('editNotes').value,
-                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-            };
-            
-            try {
-                saveChangesBtn.disabled = true;
-                saveChangesBtn.textContent = "Saving...";
-                
-                await productRef.update(updatedData);
-                
-                // Update local inventory
-                const productIndex = currentInventory.findIndex(item => item.id === docId);
-                if (productIndex !== -1) {
-                    currentInventory[productIndex] = {
-                        ...currentInventory[productIndex],
-                        ...updatedData
-                    };
-                }
-                
-                editModal.hide();
-                renderInventory(currentInventory);
-                alert("Product updated successfully!");
-            } catch (error) {
-                console.error("Error updating product:", error);
-                alert("Failed to update product. Please try again.");
-            } finally {
-                saveChangesBtn.disabled = false;
-                saveChangesBtn.textContent = "Save changes";
-            }
-        }
-
-        // Delete product from Firestore
-        async function deleteProduct() {
-            if (!confirm("Are you sure you want to delete this product?")) return;
-            
-            const docId = document.getElementById('editDocId').value;
-            const productRef = db.doc(`users/${currentUserId}/inventory/${docId}`);
-            
-            try {
-                deleteProductBtn.disabled = true;
-                deleteProductBtn.textContent = "Deleting...";
-                
-                await productRef.delete();
-                
-                // Update local inventory
-                currentInventory = currentInventory.filter(item => item.id !== docId);
-                
-                editModal.hide();
-                renderInventory(currentInventory);
-                alert("Product deleted successfully!");
-            } catch (error) {
-                console.error("Error deleting product:", error);
-                alert("Failed to delete product. Please try again.");
-            } finally {
-                deleteProductBtn.disabled = false;
-                deleteProductBtn.textContent = "Delete";
-            }
-        }
-
-        // Event listeners
-        loadInventoryBtn.addEventListener('click', loadInventory);
-        clearSearchBtn.addEventListener('click', () => {
-            searchInput.value = '';
-            renderInventory(currentInventory);
-            similarProductsAlert.classList.add('d-none');
-        });
-        searchInput.addEventListener('input', searchInventory);
-        saveChangesBtn.addEventListener('click', saveChanges);
-        deleteProductBtn.addEventListener('click', deleteProduct);
-
-        // Initialize app
-        (async function init() {
-            const loggedIn = await loginToFirebase();
-            if (!loggedIn) {
-                alert("Authentication required. Please refresh the page and try again.");
-            }
-        })();
-    </script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+    <script src="app.js"></script>
 </body>
 </html>
