@@ -16,10 +16,9 @@ const db = firebase.firestore();
 
 // Global variables
 let currentUser = null;
-let inventoryData = [];
-let filteredData = [];
 let stores = [];
 let currentStoreId = '';
+let unsubscribeInventory = null; // To store the Firestore unsubscribe function
 
 // DOM elements
 const loginModal = new bootstrap.Modal(document.getElementById('loginModal'));
@@ -182,7 +181,7 @@ function populateStoreSelect() {
     });
 }
 
-// Fetch inventory for selected store
+// Fetch inventory for selected store with real-time updates
 async function fetchInventory() {
     const selectedStoreId = storeSelect.value;
     if (!selectedStoreId) {
@@ -190,26 +189,35 @@ async function fetchInventory() {
         return;
     }
     
+    // Unsubscribe from previous listener if exists
+    if (unsubscribeInventory) {
+        unsubscribeInventory();
+    }
+    
     currentStoreId = selectedStoreId;
     showLoading();
     
     try {
-        // Get all inventory items for the current user (admin) and filter by store
-        const querySnapshot = await db.collection('users').doc(currentUser.uid)
+        // Set up real-time listener for inventory
+        unsubscribeInventory = db.collection('users').doc(currentUser.uid)
             .collection('inventory')
             .where('storeId', '==', selectedStoreId)
-            .get();
-        
-        inventoryData = querySnapshot.docs.map(doc => {
-            const data = doc.data();
-            data.id = doc.id;
-            return data;
-        });
-        
-        // Update filters and display
-        updateFilters();
-        applyFilters();
-        hideLoading();
+            .onSnapshot(querySnapshot => {
+                const inventoryData = querySnapshot.docs.map(doc => {
+                    const data = doc.data();
+                    data.id = doc.id;
+                    return data;
+                });
+                
+                // Update filters and display
+                updateFilters(inventoryData);
+                applyFilters(inventoryData);
+                hideLoading();
+            }, error => {
+                console.error('Error listening to inventory:', error);
+                alert('Failed to fetch inventory. Please check console for details.');
+                hideLoading();
+            });
     } catch (error) {
         console.error('Error fetching inventory:', error);
         alert('Failed to fetch inventory. Please check console for details.');
@@ -218,36 +226,55 @@ async function fetchInventory() {
 }
 
 // Update filter dropdowns based on inventory data
-function updateFilters() {
+function updateFilters(inventoryData) {
     // Get unique sizes and colors
-    const sizes = [...new Set(inventoryData.map(item => item.Size))].sort();
-    const colors = [...new Set(inventoryData.map(item => item.Color))].sort();
+    const sizes = [...new Set(inventoryData.map(item => item.Size))].filter(Boolean).sort();
+    const colors = [...new Set(inventoryData.map(item => item.Color))].filter(Boolean).sort();
     
     // Populate size filter
     sizeFilter.innerHTML = '<option value="">All Sizes</option>';
     sizes.forEach(size => {
-        if (size) { // Only add if size exists
-            const option = document.createElement('option');
-            option.value = size;
-            option.textContent = size;
-            sizeFilter.appendChild(option);
-        }
+        const option = document.createElement('option');
+        option.value = size;
+        option.textContent = size;
+        sizeFilter.appendChild(option);
     });
     
     // Populate color filter
     colorFilter.innerHTML = '<option value="">All Colors</option>';
     colors.forEach(color => {
-        if (color) { // Only add if color exists
-            const option = document.createElement('option');
-            option.value = color;
-            option.textContent = color;
-            colorFilter.appendChild(option);
-        }
+        const option = document.createElement('option');
+        option.value = color;
+        option.textContent = color;
+        colorFilter.appendChild(option);
     });
 }
 
 // Apply all filters and sorting
-function applyFilters() {
+async function applyFilters(inventoryData) {
+    showLoading();
+    
+    // If no data passed, query fresh from Firestore
+    if (!inventoryData) {
+        try {
+            const querySnapshot = await db.collection('users').doc(currentUser.uid)
+                .collection('inventory')
+                .where('storeId', '==', currentStoreId)
+                .get();
+            
+            inventoryData = querySnapshot.docs.map(doc => {
+                const data = doc.data();
+                data.id = doc.id;
+                return data;
+            });
+        } catch (error) {
+            console.error('Error fetching inventory for filters:', error);
+            alert('Failed to apply filters. Please try again.');
+            hideLoading();
+            return;
+        }
+    }
+    
     let results = [...inventoryData];
     
     // Apply search filter (fuzzy match)
@@ -292,57 +319,57 @@ function applyFilters() {
         }
     });
     
-    filteredData = results;
-    displayInventory();
+    displayInventory(results);
 }
 
 // Clear search and filters
-function clearSearch() {
+async function clearSearch() {
     searchInput.value = '';
     sizeFilter.value = '';
     colorFilter.value = '';
-    applyFilters();
+    await applyFilters();
 }
 
 // Display inventory in the table
-function displayInventory() {
+function displayInventory(items) {
     inventoryTable.innerHTML = '';
     
-    if (filteredData.length === 0) {
+    if (!items || items.length === 0) {
         const row = document.createElement('tr');
         row.innerHTML = '<td colspan="8" class="text-center">No items found</td>';
         inventoryTable.appendChild(row);
         itemCount.textContent = '0 items';
+        hideLoading();
         return;
     }
     
-    filteredData.forEach(item => {
+    items.forEach(item => {
         const row = document.createElement('tr');
         row.innerHTML = `
-            <td>${item['Product Name'] || 'N/A'}</td>
-            <td>${item.Brand || 'N/A'}</td>
-            <td>${item.Color || 'N/A'}</td>
-            <td>${item.Size || 'N/A'}</td>
-            <td>${item.Price || '0'}</td>
-            <td>${item.Quantity || '0'}</td>
-            <td>${getStoreName(item.storeId)}</td>
+            <td>${escapeHtml(item['Product Name'] || 'N/A')}</td>
+            <td>${escapeHtml(item.Brand || 'N/A')}</td>
+            <td>${escapeHtml(item.Color || 'N/A')}</td>
+            <td>${escapeHtml(item.Size || 'N/A')}</td>
+            <td>${escapeHtml(item.Price || '0')}</td>
+            <td>${escapeHtml(item.Quantity || '0')}</td>
+            <td>${escapeHtml(getStoreName(item.storeId))}</td>
             <td>
-                <button class="btn btn-sm btn-primary action-btn edit-btn" data-id="${item.id}">Edit</button>
-                <button class="btn btn-sm btn-danger action-btn delete-btn" data-id="${item.id}">Delete</button>
+                <button class="btn btn-sm btn-primary action-btn edit-btn" data-id="${escapeHtml(item.id)}">Edit</button>
+                <button class="btn btn-sm btn-danger action-btn delete-btn" data-id="${escapeHtml(item.id)}">Delete</button>
             </td>
         `;
         inventoryTable.appendChild(row);
     });
     
     // Update item count
-    itemCount.textContent = `${filteredData.length} ${filteredData.length === 1 ? 'item' : 'items'}`;
+    itemCount.textContent = `${items.length} ${items.length === 1 ? 'item' : 'items'}`;
     
     // Add event listeners to edit and delete buttons
     document.querySelectorAll('.edit-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
             e.stopPropagation();
             const itemId = btn.getAttribute('data-id');
-            openEditModal(itemId);
+            openEditModal(itemId, items);
         });
     });
     
@@ -358,9 +385,12 @@ function displayInventory() {
     document.querySelectorAll('#inventoryTable tr').forEach(row => {
         row.addEventListener('click', () => {
             const itemId = row.querySelector('.edit-btn').getAttribute('data-id');
-            showItemDetails(itemId);
+            const item = items.find(i => i.id === itemId);
+            if (item) showItemDetails(item);
         });
     });
+    
+    hideLoading();
 }
 
 // Get store name by ID
@@ -377,12 +407,23 @@ function fuzzyMatch(str, pattern) {
 }
 
 // Open edit modal for an item
-async function openEditModal(itemId) {
+async function openEditModal(itemId, items) {
     showLoading();
     try {
-        const item = filteredData.find(i => i.id === itemId);
+        // If items array not provided, fetch the specific item
+        let item;
+        if (items) {
+            item = items.find(i => i.id === itemId);
+        }
+        
         if (!item) {
-            throw new Error('Item not found');
+            const doc = await db.collection('users').doc(currentUser.uid)
+                .collection('inventory').doc(itemId).get();
+            if (!doc.exists) {
+                throw new Error('Item not found');
+            }
+            item = doc.data();
+            item.id = doc.id;
         }
         
         currentEditItem = item;
@@ -470,7 +511,7 @@ async function saveItemChanges() {
         Material: document.getElementById('editMaterial').value,
         Style: document.getElementById('editStyle').value,
         notes: document.getElementById('editNotes').value,
-        updatedAt: new Date().toISOString()
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     };
     
     showLoading();
@@ -479,20 +520,7 @@ async function saveItemChanges() {
             .collection('inventory').doc(itemId)
             .update(updates);
         
-        // Update local data
-        const itemIndex = inventoryData.findIndex(i => i.id === itemId);
-        if (itemIndex !== -1) {
-            inventoryData[itemIndex] = { ...inventoryData[itemIndex], ...updates };
-        }
-        
-        // Update filtered data
-        const filteredIndex = filteredData.findIndex(i => i.id === itemId);
-        if (filteredIndex !== -1) {
-            filteredData[filteredIndex] = { ...filteredData[filteredIndex], ...updates };
-        }
-        
         editItemModal.hide();
-        displayInventory();
         hideLoading();
         alert('Item updated successfully');
     } catch (error) {
@@ -512,23 +540,17 @@ async function deleteItem(itemId) {
             .collection('inventory').doc(itemId)
             .delete();
         
-        // Remove from local data
-        inventoryData = inventoryData.filter(i => i.id !== itemId);
-        filteredData = filteredData.filter(i => i.id !== itemId);
-        
-        displayInventory();
-        hideLoading();
         alert('Item deleted successfully');
     } catch (error) {
         console.error('Error deleting item:', error);
         alert('Failed to delete item');
+    } finally {
         hideLoading();
     }
 }
 
-// Show item details (could be expanded to show more details)
-function showItemDetails(itemId) {
-    const item = filteredData.find(i => i.id === itemId);
+// Show item details
+function showItemDetails(item) {
     if (!item) return;
     
     let details = `
