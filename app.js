@@ -22,6 +22,11 @@ let stores = [];
 let currentStoreId = '';
 
 // DOM elements
+const loginModal = new bootstrap.Modal(document.getElementById('loginModal'));
+const loginForm = document.getElementById('loginForm');
+const loginEmail = document.getElementById('loginEmail');
+const loginPassword = document.getElementById('loginPassword');
+const loginError = document.getElementById('loginError');
 const storeSelect = document.getElementById('storeSelect');
 const fetchBtn = document.getElementById('fetchBtn');
 const searchInput = document.getElementById('searchInput');
@@ -41,25 +46,112 @@ const loadingSpinner = document.getElementById('loadingSpinner');
 let currentEditItem = null;
 
 // Initialize the app
-async function initApp() {
+function initApp() {
     showLoading();
+    
+    // Check if user is already logged in
+    auth.onAuthStateChanged(user => {
+        if (user) {
+            // User is signed in
+            currentUser = user;
+            initializeAppAfterLogin();
+        } else {
+            // No user signed in
+            hideLoading();
+            loginModal.show();
+        }
+    });
+    
+    // Set up event listeners
+    setupEventListeners();
+}
+
+// Initialize app after successful login
+async function initializeAppAfterLogin() {
     try {
-        // Sign in with email and password (replace with your admin credentials)
-        await auth.signInWithEmailAndPassword('admin@example.com', 'adminpassword');
-        currentUser = auth.currentUser;
-        
         // Load stores
         await loadStores();
         
-        // Set up event listeners
-        setupEventListeners();
-        
-        hideLoading();
+        // Check if we have stores to show
+        if (stores.length > 0) {
+            hideLoading();
+        } else {
+            hideLoading();
+            alert('No stores found for this account.');
+        }
     } catch (error) {
         console.error('Initialization error:', error);
-        alert('Failed to initialize app. Please check console for details.');
+        showError('Failed to initialize app. Please try again.');
         hideLoading();
     }
+}
+
+// Set up event listeners
+function setupEventListeners() {
+    // Login form submission
+    loginForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        await handleLogin();
+    });
+    
+    // Inventory management buttons
+    fetchBtn.addEventListener('click', fetchInventory);
+    searchBtn.addEventListener('click', applyFilters);
+    clearSearchBtn.addEventListener('click', clearSearch);
+    searchInput.addEventListener('keyup', (e) => {
+        if (e.key === 'Enter') applyFilters();
+    });
+    sizeFilter.addEventListener('change', applyFilters);
+    colorFilter.addEventListener('change', applyFilters);
+    sortSelect.addEventListener('change', applyFilters);
+    saveChangesBtn.addEventListener('click', saveItemChanges);
+}
+
+// Handle login
+async function handleLogin() {
+    const email = loginEmail.value;
+    const password = loginPassword.value;
+    
+    if (!email || !password) {
+        showError('Please enter both email and password');
+        return;
+    }
+    
+    showLoading();
+    try {
+        const userCredential = await auth.signInWithEmailAndPassword(email, password);
+        currentUser = userCredential.user;
+        loginModal.hide();
+        await initializeAppAfterLogin();
+    } catch (error) {
+        console.error('Login error:', error);
+        let errorMessage = 'Login failed. ';
+        
+        switch (error.code) {
+            case 'auth/invalid-email':
+                errorMessage += 'Invalid email format.';
+                break;
+            case 'auth/user-disabled':
+                errorMessage += 'This account has been disabled.';
+                break;
+            case 'auth/user-not-found':
+            case 'auth/wrong-password':
+                errorMessage += 'Invalid email or password.';
+                break;
+            default:
+                errorMessage += 'Please try again.';
+        }
+        
+        showError(errorMessage);
+    } finally {
+        hideLoading();
+    }
+}
+
+// Show error message
+function showError(message) {
+    loginError.textContent = message;
+    loginError.classList.remove('d-none');
 }
 
 // Load stores from Firestore
@@ -71,6 +163,7 @@ async function loadStores() {
             populateStoreSelect();
         } else {
             console.log('No business document found for user');
+            stores = [];
         }
     } catch (error) {
         console.error('Error loading stores:', error);
@@ -87,20 +180,6 @@ function populateStoreSelect() {
         option.textContent = `${store.name} (${store.location})`;
         storeSelect.appendChild(option);
     });
-}
-
-// Set up event listeners
-function setupEventListeners() {
-    fetchBtn.addEventListener('click', fetchInventory);
-    searchBtn.addEventListener('click', applyFilters);
-    clearSearchBtn.addEventListener('click', clearSearch);
-    searchInput.addEventListener('keyup', (e) => {
-        if (e.key === 'Enter') applyFilters();
-    });
-    sizeFilter.addEventListener('change', applyFilters);
-    colorFilter.addEventListener('change', applyFilters);
-    sortSelect.addEventListener('change', applyFilters);
-    saveChangesBtn.addEventListener('click', saveItemChanges);
 }
 
 // Fetch inventory for selected store
@@ -147,19 +226,23 @@ function updateFilters() {
     // Populate size filter
     sizeFilter.innerHTML = '<option value="">All Sizes</option>';
     sizes.forEach(size => {
-        const option = document.createElement('option');
-        option.value = size;
-        option.textContent = size;
-        sizeFilter.appendChild(option);
+        if (size) { // Only add if size exists
+            const option = document.createElement('option');
+            option.value = size;
+            option.textContent = size;
+            sizeFilter.appendChild(option);
+        }
     });
     
     // Populate color filter
     colorFilter.innerHTML = '<option value="">All Colors</option>';
     colors.forEach(color => {
-        const option = document.createElement('option');
-        option.value = color;
-        option.textContent = color;
-        colorFilter.appendChild(option);
+        if (color) { // Only add if color exists
+            const option = document.createElement('option');
+            option.value = color;
+            option.textContent = color;
+            colorFilter.appendChild(option);
+        }
     });
 }
 
@@ -309,56 +392,56 @@ async function openEditModal(itemId) {
             <div class="row mb-3">
                 <div class="col-md-6">
                     <label for="editProductName" class="form-label">Product Name</label>
-                    <input type="text" class="form-control" id="editProductName" value="${item['Product Name'] || ''}">
+                    <input type="text" class="form-control" id="editProductName" value="${escapeHtml(item['Product Name'] || '')}">
                 </div>
                 <div class="col-md-6">
                     <label for="editBrand" class="form-label">Brand</label>
-                    <input type="text" class="form-control" id="editBrand" value="${item.Brand || ''}">
+                    <input type="text" class="form-control" id="editBrand" value="${escapeHtml(item.Brand || '')}">
                 </div>
             </div>
             <div class="row mb-3">
                 <div class="col-md-4">
                     <label for="editColor" class="form-label">Color</label>
-                    <input type="text" class="form-control" id="editColor" value="${item.Color || ''}">
+                    <input type="text" class="form-control" id="editColor" value="${escapeHtml(item.Color || '')}">
                 </div>
                 <div class="col-md-4">
                     <label for="editSize" class="form-label">Size</label>
-                    <input type="text" class="form-control" id="editSize" value="${item.Size || ''}">
+                    <input type="text" class="form-control" id="editSize" value="${escapeHtml(item.Size || '')}">
                 </div>
                 <div class="col-md-4">
                     <label for="editGender" class="form-label">Gender</label>
-                    <input type="text" class="form-control" id="editGender" value="${item.Gender || ''}">
+                    <input type="text" class="form-control" id="editGender" value="${escapeHtml(item.Gender || '')}">
                 </div>
             </div>
             <div class="row mb-3">
                 <div class="col-md-4">
                     <label for="editPrice" class="form-label">Price</label>
-                    <input type="text" class="form-control" id="editPrice" value="${item.Price || ''}">
+                    <input type="text" class="form-control" id="editPrice" value="${escapeHtml(item.Price || '')}">
                 </div>
                 <div class="col-md-4">
                     <label for="editQuantity" class="form-label">Quantity</label>
-                    <input type="text" class="form-control" id="editQuantity" value="${item.Quantity || ''}">
+                    <input type="text" class="form-control" id="editQuantity" value="${escapeHtml(item.Quantity || '')}">
                 </div>
                 <div class="col-md-4">
                     <label for="editAtNo" class="form-label">AT No</label>
-                    <input type="text" class="form-control" id="editAtNo" value="${item.AtNo || ''}">
+                    <input type="text" class="form-control" id="editAtNo" value="${escapeHtml(item.AtNo || '')}">
                 </div>
             </div>
             <div class="row mb-3">
                 <div class="col-md-6">
                     <label for="editMaterial" class="form-label">Material</label>
-                    <input type="text" class="form-control" id="editMaterial" value="${item.Material || ''}">
+                    <input type="text" class="form-control" id="editMaterial" value="${escapeHtml(item.Material || '')}">
                 </div>
                 <div class="col-md-6">
                     <label for="editStyle" class="form-label">Style</label>
-                    <input type="text" class="form-control" id="editStyle" value="${item.Style || ''}">
+                    <input type="text" class="form-control" id="editStyle" value="${escapeHtml(item.Style || '')}">
                 </div>
             </div>
             <div class="mb-3">
                 <label for="editNotes" class="form-label">Notes</label>
-                <textarea class="form-control" id="editNotes" rows="3">${item.notes || ''}</textarea>
+                <textarea class="form-control" id="editNotes" rows="3">${escapeHtml(item.notes || '')}</textarea>
             </div>
-            <input type="hidden" id="editItemId" value="${item.id}">
+            <input type="hidden" id="editItemId" value="${escapeHtml(item.id)}">
         `;
         
         editItemModal.show();
@@ -449,21 +532,57 @@ function showItemDetails(itemId) {
     if (!item) return;
     
     let details = `
-        <h5>${item['Product Name'] || 'N/A'}</h5>
-        <p><strong>Brand:</strong> ${item.Brand || 'N/A'}</p>
-        <p><strong>Color:</strong> ${item.Color || 'N/A'}</p>
-        <p><strong>Size:</strong> ${item.Size || 'N/A'}</p>
-        <p><strong>Price:</strong> ${item.Price || '0'}</p>
-        <p><strong>Quantity:</strong> ${item.Quantity || '0'}</p>
-        <p><strong>Store:</strong> ${getStoreName(item.storeId)}</p>
-        <p><strong>AT No:</strong> ${item.AtNo || 'N/A'}</p>
-        <p><strong>Gender:</strong> ${item.Gender || 'N/A'}</p>
-        <p><strong>Material:</strong> ${item.Material || 'N/A'}</p>
-        <p><strong>Style:</strong> ${item.Style || 'N/A'}</p>
-        <p><strong>Notes:</strong> ${item.notes || 'N/A'}</p>
+        <h5>${escapeHtml(item['Product Name'] || 'N/A')}</h5>
+        <p><strong>Brand:</strong> ${escapeHtml(item.Brand || 'N/A')}</p>
+        <p><strong>Color:</strong> ${escapeHtml(item.Color || 'N/A')}</p>
+        <p><strong>Size:</strong> ${escapeHtml(item.Size || 'N/A')}</p>
+        <p><strong>Price:</strong> ${escapeHtml(item.Price || '0')}</p>
+        <p><strong>Quantity:</strong> ${escapeHtml(item.Quantity || '0')}</p>
+        <p><strong>Store:</strong> ${escapeHtml(getStoreName(item.storeId))}</p>
+        <p><strong>AT No:</strong> ${escapeHtml(item.AtNo || 'N/A')}</p>
+        <p><strong>Gender:</strong> ${escapeHtml(item.Gender || 'N/A')}</p>
+        <p><strong>Material:</strong> ${escapeHtml(item.Material || 'N/A')}</p>
+        <p><strong>Style:</strong> ${escapeHtml(item.Style || 'N/A')}</p>
+        <p><strong>Notes:</strong> ${escapeHtml(item.notes || 'N/A')}</p>
     `;
     
-    alert(details);
+    // Create a modal to show details
+    const detailModal = new bootstrap.Modal(document.createElement('div'));
+    detailModal._element.innerHTML = `
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Item Details</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    ${details}
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(detailModal._element);
+    detailModal.show();
+    
+    // Clean up when modal is hidden
+    detailModal._element.addEventListener('hidden.bs.modal', () => {
+        document.body.removeChild(detailModal._element);
+    });
+}
+
+// Simple HTML escaping function
+function escapeHtml(unsafe) {
+    if (unsafe === null || unsafe === undefined) return '';
+    return unsafe.toString()
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
 }
 
 // Show loading spinner
@@ -477,4 +596,8 @@ function hideLoading() {
 }
 
 // Initialize the app when DOM is loaded
-document.addEventListener('DOMContentLoaded', initApp);
+document.addEventListener('DOMContentLoaded', () => {
+    // Show login modal immediately
+    loginModal.show();
+    initApp();
+});
