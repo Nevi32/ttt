@@ -1,0 +1,480 @@
+// Firebase configuration
+const firebaseConfig = {
+    apiKey: "AIzaSyD80v3mBIfPRfsjK-mt_gHr0-pYkvbXf7g",
+    authDomain: "footactionn.firebaseapp.com",
+    projectId: "footactionn",
+    storageBucket: "footactionn.appspot.com",
+    messagingSenderId: "89580639624",
+    appId: "1:89580639624:web:83473e8b9409f079f5563d",
+    measurementId: "G-P807DCTHZR"
+};
+
+// Initialize Firebase
+const app = firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.firestore();
+
+// Global variables
+let currentUser = null;
+let inventoryData = [];
+let filteredData = [];
+let stores = [];
+let currentStoreId = '';
+
+// DOM elements
+const storeSelect = document.getElementById('storeSelect');
+const fetchBtn = document.getElementById('fetchBtn');
+const searchInput = document.getElementById('searchInput');
+const searchBtn = document.getElementById('searchBtn');
+const clearSearchBtn = document.getElementById('clearSearchBtn');
+const sizeFilter = document.getElementById('sizeFilter');
+const colorFilter = document.getElementById('colorFilter');
+const sortSelect = document.getElementById('sortSelect');
+const inventoryTable = document.getElementById('inventoryTable');
+const itemCount = document.getElementById('itemCount');
+const editItemModal = new bootstrap.Modal(document.getElementById('editItemModal'));
+const editItemForm = document.getElementById('editItemForm');
+const saveChangesBtn = document.getElementById('saveChangesBtn');
+const loadingSpinner = document.getElementById('loadingSpinner');
+
+// Current item being edited
+let currentEditItem = null;
+
+// Initialize the app
+async function initApp() {
+    showLoading();
+    try {
+        // Sign in with email and password (replace with your admin credentials)
+        await auth.signInWithEmailAndPassword('admin@example.com', 'adminpassword');
+        currentUser = auth.currentUser;
+        
+        // Load stores
+        await loadStores();
+        
+        // Set up event listeners
+        setupEventListeners();
+        
+        hideLoading();
+    } catch (error) {
+        console.error('Initialization error:', error);
+        alert('Failed to initialize app. Please check console for details.');
+        hideLoading();
+    }
+}
+
+// Load stores from Firestore
+async function loadStores() {
+    try {
+        const businessDoc = await db.collection('business').doc(currentUser.uid).get();
+        if (businessDoc.exists) {
+            stores = businessDoc.data().stores || [];
+            populateStoreSelect();
+        } else {
+            console.log('No business document found for user');
+        }
+    } catch (error) {
+        console.error('Error loading stores:', error);
+        throw error;
+    }
+}
+
+// Populate store dropdown
+function populateStoreSelect() {
+    storeSelect.innerHTML = '<option value="">Select a store</option>';
+    stores.forEach(store => {
+        const option = document.createElement('option');
+        option.value = store.id;
+        option.textContent = `${store.name} (${store.location})`;
+        storeSelect.appendChild(option);
+    });
+}
+
+// Set up event listeners
+function setupEventListeners() {
+    fetchBtn.addEventListener('click', fetchInventory);
+    searchBtn.addEventListener('click', applyFilters);
+    clearSearchBtn.addEventListener('click', clearSearch);
+    searchInput.addEventListener('keyup', (e) => {
+        if (e.key === 'Enter') applyFilters();
+    });
+    sizeFilter.addEventListener('change', applyFilters);
+    colorFilter.addEventListener('change', applyFilters);
+    sortSelect.addEventListener('change', applyFilters);
+    saveChangesBtn.addEventListener('click', saveItemChanges);
+}
+
+// Fetch inventory for selected store
+async function fetchInventory() {
+    const selectedStoreId = storeSelect.value;
+    if (!selectedStoreId) {
+        alert('Please select a store first');
+        return;
+    }
+    
+    currentStoreId = selectedStoreId;
+    showLoading();
+    
+    try {
+        // Get all inventory items for the current user (admin) and filter by store
+        const querySnapshot = await db.collection('users').doc(currentUser.uid)
+            .collection('inventory')
+            .where('storeId', '==', selectedStoreId)
+            .get();
+        
+        inventoryData = querySnapshot.docs.map(doc => {
+            const data = doc.data();
+            data.id = doc.id;
+            return data;
+        });
+        
+        // Update filters and display
+        updateFilters();
+        applyFilters();
+        hideLoading();
+    } catch (error) {
+        console.error('Error fetching inventory:', error);
+        alert('Failed to fetch inventory. Please check console for details.');
+        hideLoading();
+    }
+}
+
+// Update filter dropdowns based on inventory data
+function updateFilters() {
+    // Get unique sizes and colors
+    const sizes = [...new Set(inventoryData.map(item => item.Size))].sort();
+    const colors = [...new Set(inventoryData.map(item => item.Color))].sort();
+    
+    // Populate size filter
+    sizeFilter.innerHTML = '<option value="">All Sizes</option>';
+    sizes.forEach(size => {
+        const option = document.createElement('option');
+        option.value = size;
+        option.textContent = size;
+        sizeFilter.appendChild(option);
+    });
+    
+    // Populate color filter
+    colorFilter.innerHTML = '<option value="">All Colors</option>';
+    colors.forEach(color => {
+        const option = document.createElement('option');
+        option.value = color;
+        option.textContent = color;
+        colorFilter.appendChild(option);
+    });
+}
+
+// Apply all filters and sorting
+function applyFilters() {
+    let results = [...inventoryData];
+    
+    // Apply search filter (fuzzy match)
+    const searchTerm = searchInput.value.trim().toLowerCase();
+    if (searchTerm) {
+        results = results.filter(item => {
+            const productName = item['Product Name']?.toLowerCase() || '';
+            return fuzzyMatch(productName, searchTerm);
+        });
+    }
+    
+    // Apply size filter
+    const selectedSize = sizeFilter.value;
+    if (selectedSize) {
+        results = results.filter(item => item.Size === selectedSize);
+    }
+    
+    // Apply color filter
+    const selectedColor = colorFilter.value;
+    if (selectedColor) {
+        results = results.filter(item => item.Color === selectedColor);
+    }
+    
+    // Apply sorting
+    const sortOption = sortSelect.value;
+    results.sort((a, b) => {
+        switch (sortOption) {
+            case 'size-asc':
+                return (a.Size || '').localeCompare(b.Size || '');
+            case 'size-desc':
+                return (b.Size || '').localeCompare(a.Size || '');
+            case 'name-asc':
+                return (a['Product Name'] || '').localeCompare(b['Product Name'] || '');
+            case 'name-desc':
+                return (b['Product Name'] || '').localeCompare(a['Product Name'] || '');
+            case 'price-asc':
+                return (parseFloat(a.Price || 0) - parseFloat(b.Price || 0));
+            case 'price-desc':
+                return (parseFloat(b.Price || 0) - parseFloat(a.Price || 0));
+            default:
+                return 0;
+        }
+    });
+    
+    filteredData = results;
+    displayInventory();
+}
+
+// Clear search and filters
+function clearSearch() {
+    searchInput.value = '';
+    sizeFilter.value = '';
+    colorFilter.value = '';
+    applyFilters();
+}
+
+// Display inventory in the table
+function displayInventory() {
+    inventoryTable.innerHTML = '';
+    
+    if (filteredData.length === 0) {
+        const row = document.createElement('tr');
+        row.innerHTML = '<td colspan="8" class="text-center">No items found</td>';
+        inventoryTable.appendChild(row);
+        itemCount.textContent = '0 items';
+        return;
+    }
+    
+    filteredData.forEach(item => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td>${item['Product Name'] || 'N/A'}</td>
+            <td>${item.Brand || 'N/A'}</td>
+            <td>${item.Color || 'N/A'}</td>
+            <td>${item.Size || 'N/A'}</td>
+            <td>${item.Price || '0'}</td>
+            <td>${item.Quantity || '0'}</td>
+            <td>${getStoreName(item.storeId)}</td>
+            <td>
+                <button class="btn btn-sm btn-primary action-btn edit-btn" data-id="${item.id}">Edit</button>
+                <button class="btn btn-sm btn-danger action-btn delete-btn" data-id="${item.id}">Delete</button>
+            </td>
+        `;
+        inventoryTable.appendChild(row);
+    });
+    
+    // Update item count
+    itemCount.textContent = `${filteredData.length} ${filteredData.length === 1 ? 'item' : 'items'}`;
+    
+    // Add event listeners to edit and delete buttons
+    document.querySelectorAll('.edit-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const itemId = btn.getAttribute('data-id');
+            openEditModal(itemId);
+        });
+    });
+    
+    document.querySelectorAll('.delete-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const itemId = btn.getAttribute('data-id');
+            deleteItem(itemId);
+        });
+    });
+    
+    // Add click event to rows to show details
+    document.querySelectorAll('#inventoryTable tr').forEach(row => {
+        row.addEventListener('click', () => {
+            const itemId = row.querySelector('.edit-btn').getAttribute('data-id');
+            showItemDetails(itemId);
+        });
+    });
+}
+
+// Get store name by ID
+function getStoreName(storeId) {
+    const store = stores.find(s => s.id === storeId);
+    return store ? `${store.name} (${store.location})` : storeId;
+}
+
+// Fuzzy match for product names
+function fuzzyMatch(str, pattern) {
+    pattern = pattern.toLowerCase().split('').join('.*');
+    const regex = new RegExp(`.*${pattern}.*`);
+    return regex.test(str.toLowerCase());
+}
+
+// Open edit modal for an item
+async function openEditModal(itemId) {
+    showLoading();
+    try {
+        const item = filteredData.find(i => i.id === itemId);
+        if (!item) {
+            throw new Error('Item not found');
+        }
+        
+        currentEditItem = item;
+        
+        // Create form HTML
+        editItemForm.innerHTML = `
+            <div class="row mb-3">
+                <div class="col-md-6">
+                    <label for="editProductName" class="form-label">Product Name</label>
+                    <input type="text" class="form-control" id="editProductName" value="${item['Product Name'] || ''}">
+                </div>
+                <div class="col-md-6">
+                    <label for="editBrand" class="form-label">Brand</label>
+                    <input type="text" class="form-control" id="editBrand" value="${item.Brand || ''}">
+                </div>
+            </div>
+            <div class="row mb-3">
+                <div class="col-md-4">
+                    <label for="editColor" class="form-label">Color</label>
+                    <input type="text" class="form-control" id="editColor" value="${item.Color || ''}">
+                </div>
+                <div class="col-md-4">
+                    <label for="editSize" class="form-label">Size</label>
+                    <input type="text" class="form-control" id="editSize" value="${item.Size || ''}">
+                </div>
+                <div class="col-md-4">
+                    <label for="editGender" class="form-label">Gender</label>
+                    <input type="text" class="form-control" id="editGender" value="${item.Gender || ''}">
+                </div>
+            </div>
+            <div class="row mb-3">
+                <div class="col-md-4">
+                    <label for="editPrice" class="form-label">Price</label>
+                    <input type="text" class="form-control" id="editPrice" value="${item.Price || ''}">
+                </div>
+                <div class="col-md-4">
+                    <label for="editQuantity" class="form-label">Quantity</label>
+                    <input type="text" class="form-control" id="editQuantity" value="${item.Quantity || ''}">
+                </div>
+                <div class="col-md-4">
+                    <label for="editAtNo" class="form-label">AT No</label>
+                    <input type="text" class="form-control" id="editAtNo" value="${item.AtNo || ''}">
+                </div>
+            </div>
+            <div class="row mb-3">
+                <div class="col-md-6">
+                    <label for="editMaterial" class="form-label">Material</label>
+                    <input type="text" class="form-control" id="editMaterial" value="${item.Material || ''}">
+                </div>
+                <div class="col-md-6">
+                    <label for="editStyle" class="form-label">Style</label>
+                    <input type="text" class="form-control" id="editStyle" value="${item.Style || ''}">
+                </div>
+            </div>
+            <div class="mb-3">
+                <label for="editNotes" class="form-label">Notes</label>
+                <textarea class="form-control" id="editNotes" rows="3">${item.notes || ''}</textarea>
+            </div>
+            <input type="hidden" id="editItemId" value="${item.id}">
+        `;
+        
+        editItemModal.show();
+        hideLoading();
+    } catch (error) {
+        console.error('Error opening edit modal:', error);
+        alert('Failed to load item for editing');
+        hideLoading();
+    }
+}
+
+// Save changes to an item
+async function saveItemChanges() {
+    const itemId = document.getElementById('editItemId').value;
+    if (!itemId) return;
+    
+    const updates = {
+        'Product Name': document.getElementById('editProductName').value,
+        Brand: document.getElementById('editBrand').value,
+        Color: document.getElementById('editColor').value,
+        Size: document.getElementById('editSize').value,
+        Gender: document.getElementById('editGender').value,
+        Price: document.getElementById('editPrice').value,
+        Quantity: document.getElementById('editQuantity').value,
+        AtNo: document.getElementById('editAtNo').value,
+        Material: document.getElementById('editMaterial').value,
+        Style: document.getElementById('editStyle').value,
+        notes: document.getElementById('editNotes').value,
+        updatedAt: new Date().toISOString()
+    };
+    
+    showLoading();
+    try {
+        await db.collection('users').doc(currentUser.uid)
+            .collection('inventory').doc(itemId)
+            .update(updates);
+        
+        // Update local data
+        const itemIndex = inventoryData.findIndex(i => i.id === itemId);
+        if (itemIndex !== -1) {
+            inventoryData[itemIndex] = { ...inventoryData[itemIndex], ...updates };
+        }
+        
+        // Update filtered data
+        const filteredIndex = filteredData.findIndex(i => i.id === itemId);
+        if (filteredIndex !== -1) {
+            filteredData[filteredIndex] = { ...filteredData[filteredIndex], ...updates };
+        }
+        
+        editItemModal.hide();
+        displayInventory();
+        hideLoading();
+        alert('Item updated successfully');
+    } catch (error) {
+        console.error('Error updating item:', error);
+        alert('Failed to update item');
+        hideLoading();
+    }
+}
+
+// Delete an item
+async function deleteItem(itemId) {
+    if (!confirm('Are you sure you want to delete this item?')) return;
+    
+    showLoading();
+    try {
+        await db.collection('users').doc(currentUser.uid)
+            .collection('inventory').doc(itemId)
+            .delete();
+        
+        // Remove from local data
+        inventoryData = inventoryData.filter(i => i.id !== itemId);
+        filteredData = filteredData.filter(i => i.id !== itemId);
+        
+        displayInventory();
+        hideLoading();
+        alert('Item deleted successfully');
+    } catch (error) {
+        console.error('Error deleting item:', error);
+        alert('Failed to delete item');
+        hideLoading();
+    }
+}
+
+// Show item details (could be expanded to show more details)
+function showItemDetails(itemId) {
+    const item = filteredData.find(i => i.id === itemId);
+    if (!item) return;
+    
+    let details = `
+        <h5>${item['Product Name'] || 'N/A'}</h5>
+        <p><strong>Brand:</strong> ${item.Brand || 'N/A'}</p>
+        <p><strong>Color:</strong> ${item.Color || 'N/A'}</p>
+        <p><strong>Size:</strong> ${item.Size || 'N/A'}</p>
+        <p><strong>Price:</strong> ${item.Price || '0'}</p>
+        <p><strong>Quantity:</strong> ${item.Quantity || '0'}</p>
+        <p><strong>Store:</strong> ${getStoreName(item.storeId)}</p>
+        <p><strong>AT No:</strong> ${item.AtNo || 'N/A'}</p>
+        <p><strong>Gender:</strong> ${item.Gender || 'N/A'}</p>
+        <p><strong>Material:</strong> ${item.Material || 'N/A'}</p>
+        <p><strong>Style:</strong> ${item.Style || 'N/A'}</p>
+        <p><strong>Notes:</strong> ${item.notes || 'N/A'}</p>
+    `;
+    
+    alert(details);
+}
+
+// Show loading spinner
+function showLoading() {
+    loadingSpinner.classList.remove('d-none');
+}
+
+// Hide loading spinner
+function hideLoading() {
+    loadingSpinner.classList.add('d-none');
+}
+
+// Initialize the app when DOM is loaded
+document.addEventListener('DOMContentLoaded', initApp);
