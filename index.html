@@ -8,6 +8,32 @@
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+    <!-- Login Modal -->
+<div class="modal fade" id="loginModal" tabindex="-1" aria-hidden="false" data-bs-backdrop="static" data-bs-keyboard="false">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Admin Login</h5>
+            </div>
+            <div class="modal-body">
+                <form id="loginForm">
+                    <div class="mb-3">
+                        <label for="loginEmail" class="form-label">Email</label>
+                        <input type="email" class="form-control" id="loginEmail" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="loginPassword" class="form-label">Password</label>
+                        <input type="password" class="form-control" id="loginPassword" required>
+                    </div>
+                    <div id="loginError" class="alert alert-danger d-none"></div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="submit" form="loginForm" class="btn btn-primary">Login</button>
+            </div>
+        </div>
+    </div>
+</div>
     <div class="container mt-4">
         <h1 class="text-center mb-4">Inventory Management</h1>
         
